@@ -1,23 +1,20 @@
-import { getOrders, getOrderById } from './order.service.js';
+import { prisma } from '../../lib/prisma.js';
 
-export async function listOrders(req, res) {
+export const getOrders = async (req, res) => {
   try {
-    const orders = await getOrders(req.query);
-    res.json(orders);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-}
+    // Fetches all orders with related user and items in a single query
+    const orders = await prisma.order.findMany({
+      include: {
+        orderItems: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
 
-export async function getOrder(req, res) {
-  try {
-    const id = parseInt(req.params.id);
-    const order = await getOrderById(id);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    res.json(order);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(200).json({ data: orders });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
-}
+};
