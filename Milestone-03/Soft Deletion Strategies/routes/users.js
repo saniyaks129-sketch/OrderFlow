@@ -2,54 +2,44 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// GET all users in the system
+// Move 04: Get all active users
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT * FROM users');
-    res.json(rows);
+    const result = await db.query('SELECT * FROM users WHERE deleted_at IS NULL ORDER BY id ASC');
+    res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Database execution error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// GET single user details by ID
+// Get single active user
 router.get('/:id', async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json(rows[0]);
+    const { id } = req.params;
+    const result = await db.query('SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found or deleted' });
+    }
+    res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Database retrieval error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// CREATE a new user
-router.post('/', async (req, res) => {
-  const { name, email } = req.body;
-  try {
-    const { rows } = await db.query(
-      'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
-      [name, email]
-    );
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: 'User creation failed' });
-  }
-});
-
-// DELETE user permanently from the system
+// Move 03: Replace Hard Delete with Soft Delete UPDATE
 router.delete('/:id', async (req, res) => {
   try {
-    // Hard DELETE from users table
-    const { rowCount } = await db.query('DELETE FROM users WHERE id = $1', [req.params.id]);
-    
-    if (rowCount === 0) {
-      return res.status(404).json({ error: 'User not found' });
+    const { id } = req.params;
+    const result = await db.query(
+      'UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found or already deleted' });
     }
-    
-    res.json({ message: 'User permanently deleted from LedgerApp' });
+    res.json({ message: 'User soft deleted successfully', user: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: 'Delete operation failed' });
+    res.status(500).json({ error: err.message });
   }
 });
 
