@@ -1,53 +1,52 @@
--- Drop tables in order of dependencies
-DROP TABLE IF EXISTS payments CASCADE;
-DROP TABLE IF EXISTS order_items CASCADE;
-DROP TABLE IF EXISTS orders CASCADE;
-DROP TABLE IF EXISTS products CASCADE;
-DROP TABLE IF EXISTS customers CASCADE;
-
--- Customer records
-CREATE TABLE customers (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- Base Tables Definition
+CREATE TABLE IF NOT EXISTS customers (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- BUG 1: Missing Foreign Key (Orphaned Records)
--- The customer_id column should have a REFERENCES customers(id) constraint, but it's missed here.
-CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
-    customer_id INTEGER, -- NO FOREIGN KEY!
-    status VARCHAR(20) DEFAULT 'pending',
-    total DECIMAL(10,2) DEFAULT 0.00,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS products (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  sku VARCHAR(100) NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- BUG 2: Missing CHECK Constraint (Invalid Data)
--- The inventory_count column should have a CHECK(inventory_count >= 0) constraint.
-CREATE TABLE products (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    sku VARCHAR(50) NOT NULL UNIQUE,
-    inventory_count INTEGER DEFAULT 0, -- NO CHECK CONSTRAINT!
-    price DECIMAL(10,2) NOT NULL
+CREATE TABLE IF NOT EXISTS orders (
+  id SERIAL PRIMARY KEY,
+  customer_id INT,
+  total_amount DECIMAL(10,2) DEFAULT 0.00,
+  status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Order Items table
-CREATE TABLE order_items (
-    id SERIAL PRIMARY KEY,
-    order_id INTEGER NOT NULL REFERENCES orders(id),
-    product_id INTEGER NOT NULL REFERENCES products(id),
-    quantity INTEGER NOT NULL,
-    unit_price DECIMAL(10,2) NOT NULL
+CREATE TABLE IF NOT EXISTS order_items (
+  id SERIAL PRIMARY KEY,
+  order_id INT REFERENCES orders(id) ON DELETE CASCADE,
+  product_id INT REFERENCES products(id),
+  quantity INT,
+  price DECIMAL(10,2) NOT NULL
 );
 
--- BUG 3: Missing UNIQUE Constraint (Duplicate Key Problem)
--- The order_id column should have a UNIQUE constraint to ensure only one payment record per order.
-CREATE TABLE payments (
-    id SERIAL PRIMARY KEY,
-    order_id INTEGER NOT NULL, -- NO UNIQUE CONSTRAINT!
-    amount DECIMAL(10,2) NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending', -- Can be 'pending' or 'completed'
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- =================================================================
+-- PRODUCTION BUG FIXES (Schema-Level Constraints)
+-- =================================================================
+
+-- Fix 1: Add Foreign Key Constraint on Orders (Prevents Orphaned Records)
+ALTER TABLE orders
+ADD CONSTRAINT fk_orders_customer
+FOREIGN KEY (customer_id) REFERENCES customers(id)
+ON DELETE RESTRICT;
+
+-- Fix 2: Add NOT NULL and Positive CHECK Constraint on Order Items Quantity
+ALTER TABLE order_items
+ALTER COLUMN quantity SET NOT NULL;
+
+ALTER TABLE order_items
+ADD CONSTRAINT check_positive_quantity CHECK (quantity > 0);
+
+-- Fix 3: Add UNIQUE Constraint on Product SKUs (Prevents Duplicate Inventory Keys)
+ALTER TABLE products
+ADD CONSTRAINT unique_product_sku UNIQUE (sku);
